@@ -1,0 +1,172 @@
+# Script wlip.sh
+# 
+# Installation:
+# 
+# Obtain the file wlip.sh and deploy it to a directory path of choice.  This is
+# the only file that you will need.  You may also want the README file for
+# safekeeping, your choice.
+# 
+# NOTE:
+# 
+# When an instance is created, it is created with default security group(s). Now
+# the default "SecurityGroups" normally will be for "ssh-access" (for connection
+# to the AWS instance) and a Security Group for whitelisting and IP address. With
+# these 2 groups created, you can execute 'aws ec2 describe-instances'.  The output under
+# the "SecurityGroups" heading will be displayed:
+#
+#                    "SecurityGroups": [
+#                        {
+#                            "GroupName": "ssh-access-1",
+#                            "GroupId": "sg-75a133ea"
+#                        },
+#                        {
+#                            "GroupName": "whitelist-1",
+#                            "GroupId": "sg-af4735c0"
+#                        }
+#                    ],
+#
+# As you can see above the GroupName values are "ssh-access" and "whitelist-1".
+#
+# You may be wondering why have "-1" appended to the 2 GroupNames. The reason
+# is these 2 Security Groups are the defaults and they cannot be updated and
+# when you need to create additional Security Groups you can simply replace the
+# trailing last digit by incrementing by 1.  So if a new whitelist Security Group
+# is needed and only 1 exists then it will be named "whitelist-2" and so on.  The
+# same would hold true for the "ssh-access-1" Security Group.  
+#
+# The script will obtain the default GroupName basename "whitelist" and increment
+# accordingly. 
+#
+# Note the name because the script is dependent on using the GroupName for searching
+# Security Group Names that have a prefix GroupName of e.g "whit".  Names must be
+# unique per security group.  Currently, the 'wlip.sh' script has a variable:
+#
+#	SGNamePrefix
+#
+# The prefix is derived from the Network-Interfaces section of GroupNames.  Should you
+# do as instructed above you will see GroupNames of:
+#
+#   whitelist-1
+#   whitelist-2
+#   whitelist-3
+#
+# This will help naming standards and parsing values much easier.
+#
+# Running the Script:
+#
+# The script has an argument of either 'full' or 'incremental'.  If you were to
+# only type in 'wlip.sh' the Usage description will be displayed noting to provide
+# either of these arguments.
+# 
+# Execution:
+# 
+# To execute the script issue:
+# 
+#    <absolute path>/wlip.sh full
+# 
+# Or
+# 
+#    <absolute path>/wlip.sh incremental
+# 
+# To run the script in the background simply append '<space> &' after the argument.
+# A full refresh takes approximately 3 1/2 minutes while the incremental takes less
+# than 4 seconds.  For production it is recommended to use a increment refresh because
+# it compares previously downloaded IP addresses with the current IP addresses that
+# were downloaded during this script execution.  Should there be more or less IPs
+# found in the comparison of the IP files then the current list will either add the
+# new IPs or delete previously added IPs from the firewall ruleset.  A full refresh
+# will remove all IP firewall rules and add all IPs downloaded during this script
+# execution.
+# 
+# It is recommended that a incremental be run daily at 5 minute intervals and a full refresh
+# be performed on a weekly/monthly basis to keep in sync with Pingdom's Ipv4 IP listing that they
+# provide.
+# 
+# Crontab:
+# 
+#     Incremental Example:  Execute every 5 minutes
+# 
+#     */5 * * * * cd /absolute-path-where-wlip.sh-exists; ./wlip.sh incremental
+# 
+#     Full Example:
+# 
+#     5 8 * * Sun cd /absolute-path-where-wlip.sh-exists; ./wlip.sh full
+# 
+# Remember that you should use the crontab entry of the user that 'owns' the 'wlip.sh'
+# file.
+# 
+# Troubleshooting:
+# 
+# Check yesterday’s *.gz for ingress/revoke/audit.log and summary.log for all the detail of yesterday
+# and for today’s effort go to the ./logs path.
+#
+# Log / Summary Files
+# 
+# audit.log:
+# 
+# Every time the script executes, whether it be an incremental or full refresh of the ruleset the file
+# ./logs/audit.log provides the following for reference:
+# 
+#     20180212104625Z – INCR Refresh Performed
+#     20180212104931Z – FULL Refresh Performed
+#
+# 
+# Now should IP address be removed or added during a script execution you will see the following:
+# 
+#     20180212093713Z - 134.23.101.22/32 inserted into rules
+#     20180212104613Z - 134.23.203.21/32 deleted from rules
+# 
+# Any adds/deletions indicate a change in the IP addresses that Pingdom provides to its customers.
+# 
+# summary.rpt
+# 
+# This file will provide the operations (add/delete) upon the exit of the full refresh script execution.  It 
+# will be located in the daily *.gz file after the full refresh executes:
+# 
+#     Date: 02/19/2018
+# 
+#     Total IPs Imported: 105
+# 
+#     Service Group sg-79920206 Results
+# 
+#             - Revoked Success......: 45
+#             - Revoked Failure......: 0
+#             - Ingress Success......: 45
+#             - Ingress Failure......: 0
+#             - Start................: 13:36:32
+#             - Completion...........: 13:37:48
+# 
+#     Service Group sg-af9735d0 Results
+# 
+#             - Revoked Success......: 45
+#             - Revoked Failure......: 0
+#             - Ingress Success......: 45
+#             - Ingress Failure......: 0
+#             - Start................: 13:37:48
+#             - Completion...........: 13:39:14
+# 
+#     Service Group sg-f2ee7e8d Results
+# 
+#             - Revoked Success......: 15
+#             - Revoked Failure......: 0
+#             - Ingress Success......: 15
+#             - Ingress Failure......: 0
+#             - Start................: 13:39:14
+#             - Completion...........: 13:39:44
+# 
+# The ./logs/summary.rpt file will contain a summary of each 'full' exection refresh.  Should
+# there be any '... Failure......: ' not equal to '0' then there was any issue with either the
+# add or delete of a IP address.  Look at the ingress.out or revoke.out for more granular detail.
+# 
+# Be aware that there is a 250/ms delay after each ingress and revoke command.  This delay is
+# needed due to the time it takes AWS to serialize and deserialize the JSON strings in the instance.
+#
+# NOTE:
+# 
+# You will see a variable named 'RuleMax' which is set to 45.  AWS Security Groups can only contain
+# up to 50 rules so with a value of 45 there's room for growth.
+#
+# 
+# Good Luck...
+# 
+# Dave Davis 
